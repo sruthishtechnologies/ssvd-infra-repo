@@ -2,10 +2,6 @@ name: Infracost
 
 on:
   pull_request:
-    paths:
-      - "**/*.tf"
-      - "**/*.tfvars"
-      - ".github/workflows/infracost.yml"
 
 permissions:
   contents: read
