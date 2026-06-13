@@ -1,0 +1,83 @@
+name: Infracost
+
+on:
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.tfvars"
+      - ".github/workflows/infracost.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  infracost:
+    name: Cost estimate (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - dev
+          - staging
+          - prod
+    steps:
+      - name: Check API key
+        id: api
+        run: |
+          if [ -n "${{ secrets.INFRACOST_API_KEY }}" ]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Check out base branch
+        if: steps.api.outputs.configured == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+
+      - name: Check out PR branch
+        if: steps.api.outputs.configured == 'true'
+        uses: actions/checkout@v5
+        with:
+          path: current
+
+      - name: Set up Infracost
+        if: steps.api.outputs.configured == 'true'
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate base cost
+        if: steps.api.outputs.configured == 'true'
+        run: |
+          infracost breakdown \
+            --path base/envs/${{ matrix.environment }} \
+            --format json \
+            --out-file /tmp/infracost-base.json
+
+      - name: Generate diff
+        if: steps.api.outputs.configured == 'true'
+        run: |
+          infracost diff \
+            --path current/envs/${{ matrix.environment }} \
+            --compare-to /tmp/infracost-base.json \
+            --format json \
+            --out-file /tmp/infracost.json
+
+      - name: Post cost comment
+        if: steps.api.outputs.configured == 'true'
+        run: |
+          infracost comment github \
+            --path /tmp/infracost.json \
+            --repo "${GITHUB_REPOSITORY}" \
+            --github-token "${{ secrets.GITHUB_TOKEN }}" \
+            --pull-request "${{ github.event.pull_request.number }}" \
+            --behavior update
+
+      - name: Show missing API key notice
+        if: steps.api.outputs.configured != 'true'
+        run: echo "::notice::Skipping Infracost because INFRACOST_API_KEY is not configured."

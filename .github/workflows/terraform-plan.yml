@@ -1,0 +1,82 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.tfvars"
+      - ".github/workflows/terraform-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  plan:
+    name: Plan (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - dev
+          - staging
+          - prod
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-2' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Resolve AWS auth mode
+        id: auth
+        run: |
+          if [ -n "${{ vars.AWS_ROLE_TO_ASSUME }}" ]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+            echo "mode=oidc" >> "${GITHUB_OUTPUT}"
+          elif [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+            echo "mode=keys" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "mode=none" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Configure AWS credentials with OIDC
+        if: steps.auth.outputs.mode == 'oidc'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+
+      - name: Configure AWS credentials with access keys
+        if: steps.auth.outputs.mode == 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Set up Terraform
+        if: steps.auth.outputs.configured == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Init without backend
+        if: steps.auth.outputs.configured == 'true'
+        working-directory: envs/${{ matrix.environment }}
+        run: terraform init -backend=false
+
+      - name: Plan
+        if: steps.auth.outputs.configured == 'true'
+        working-directory: envs/${{ matrix.environment }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Show missing credentials notice
+        if: steps.auth.outputs.configured != 'true'
+        run: |
+          echo "::notice::Skipping terraform plan because AWS credentials are not configured."
+          echo "::notice::Set AWS_ROLE_TO_ASSUME or AWS access key secrets to enable plan."

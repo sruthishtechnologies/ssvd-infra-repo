@@ -1,0 +1,18 @@
+extends: default
+
+ignore: |
+  modules/argocd/root-app/templates/*.yaml
+
+rules:
+  line-length:
+    max: 160
+    level: error
+  document-start: disable
+  truthy:
+    allowed-values:
+      - "true"
+      - "false"
+      - "on"
+      - "off"
+  comments:
+    min-spaces-from-content: 1

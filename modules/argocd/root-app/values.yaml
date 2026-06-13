@@ -1,0 +1,6 @@
+rootApp:
+  name: ssvd-root
+  namespace: argocd
+  repoURL: https://github.com/sruthishtechnologies/ssvd-ops-repo.git
+  targetRevision: main
+  path: bootstrap/dev

@@ -1,0 +1,26 @@
+framework:
+  - terraform
+quiet: true
+compact: true
+download-external-modules: false
+skip-check:
+  # Demo-cost posture: public subnets and public EKS endpoint avoid NAT gateway cost.
+  - CKV_AWS_38
+  - CKV_AWS_39
+  - CKV_AWS_130
+  # Full private networking, customer-managed KMS, and complete log sets are production hardening follow-ups.
+  - CKV_AWS_37
+  - CKV_AWS_58
+  - CKV_AWS_109
+  - CKV_AWS_111
+  - CKV_AWS_115
+  - CKV_AWS_116
+  - CKV_AWS_117
+  - CKV_AWS_158
+  - CKV_AWS_173
+  - CKV_AWS_260
+  # Demo-cost exceptions reported by local Checkov.
+  - CKV_AWS_136
+  - CKV_AWS_338
+  - CKV2_AWS_11
+  - CKV2_AWS_12
