@@ -107,7 +107,10 @@ jobs:
   apply-dev:
     name: Apply dev
     needs: detect
-    if: needs.detect.outputs.dev == 'true'
+    if: >-
+      needs.detect.outputs.dev == 'true' &&
+      vars.AWS_ROLE_TO_ASSUME != '' &&
+      vars.TF_STATE_BUCKET != ''
     runs-on: ubuntu-latest
     environment: dev
     env:
@@ -117,11 +120,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
-      - name: Validate apply configuration
-        run: |
-          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}"
-          test -n "${TF_STATE_BUCKET}"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -155,7 +153,10 @@ jobs:
   apply-staging:
     name: Apply staging
     needs: detect
-    if: needs.detect.outputs.staging == 'true'
+    if: >-
+      needs.detect.outputs.staging == 'true' &&
+      vars.AWS_ROLE_TO_ASSUME != '' &&
+      vars.TF_STATE_BUCKET != ''
     runs-on: ubuntu-latest
     environment: staging
     env:
@@ -165,11 +166,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
-      - name: Validate apply configuration
-        run: |
-          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}"
-          test -n "${TF_STATE_BUCKET}"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -203,7 +199,10 @@ jobs:
   apply-prod:
     name: Apply prod
     needs: detect
-    if: needs.detect.outputs.prod == 'true'
+    if: >-
+      needs.detect.outputs.prod == 'true' &&
+      vars.AWS_ROLE_TO_ASSUME != '' &&
+      vars.TF_STATE_BUCKET != ''
     runs-on: ubuntu-latest
     environment: prod
     env:
@@ -213,11 +212,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
-      - name: Validate apply configuration
-        run: |
-          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}"
-          test -n "${TF_STATE_BUCKET}"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -247,3 +241,19 @@ jobs:
       - name: Apply
         working-directory: envs/prod
         run: terraform apply -auto-approve -input=false
+
+  apply-configuration-notice:
+    name: Apply configuration notice
+    needs: detect
+    if: >-
+      (needs.detect.outputs.dev == 'true' ||
+      needs.detect.outputs.staging == 'true' ||
+      needs.detect.outputs.prod == 'true') &&
+      (vars.AWS_ROLE_TO_ASSUME == '' ||
+      vars.TF_STATE_BUCKET == '')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show required variables
+        run: |
+          echo "::notice::Terraform apply was triggered but skipped."
+          echo "::notice::Set AWS_ROLE_TO_ASSUME and TF_STATE_BUCKET repository variables to enable automatic apply."
