@@ -1,0 +1,249 @@
+---
+name: Terraform Apply
+
+"on":
+  push:
+    branches:
+      - main
+    paths:
+      - "envs/**"
+      - "modules/**"
+      - ".github/workflows/terraform-apply.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to apply
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+          - all
+      confirm:
+        description: Type apply to run terraform apply
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-apply-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect environments
+    runs-on: ubuntu-latest
+    outputs:
+      dev: ${{ steps.detect.outputs.dev }}
+      staging: ${{ steps.detect.outputs.staging }}
+      prod: ${{ steps.detect.outputs.prod }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed environments
+        id: detect
+        shell: bash
+        run: |
+          dev=false
+          staging=false
+          prod=false
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.confirm }}" != "apply" ]; then
+              echo "confirm must be exactly: apply" >&2
+              exit 1
+            fi
+
+            case "${{ inputs.environment }}" in
+              dev) dev=true ;;
+              staging) staging=true ;;
+              prod) prod=true ;;
+              all) dev=true; staging=true; prod=true ;;
+            esac
+          else
+            before="${{ github.event.before }}"
+            after="${{ github.sha }}"
+
+            if [[ "${before}" =~ ^0+$ ]]; then
+              changed_files="$(git ls-tree -r --name-only "${after}")"
+            else
+              changed_files="$(git diff --name-only "${before}" "${after}")"
+            fi
+
+            echo "${changed_files}"
+
+            if echo "${changed_files}" | grep -qE '^(modules/|\.github/workflows/terraform-apply\.yml)'; then
+              dev=true
+              staging=true
+              prod=true
+            fi
+
+            if echo "${changed_files}" | grep -qE '^envs/dev/'; then
+              dev=true
+            fi
+
+            if echo "${changed_files}" | grep -qE '^envs/staging/'; then
+              staging=true
+            fi
+
+            if echo "${changed_files}" | grep -qE '^envs/prod/'; then
+              prod=true
+            fi
+          fi
+
+          {
+            echo "dev=${dev}"
+            echo "staging=${staging}"
+            echo "prod=${prod}"
+          } >> "${GITHUB_OUTPUT}"
+
+  apply-dev:
+    name: Apply dev
+    needs: detect
+    if: needs.detect.outputs.dev == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-2' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate apply configuration
+        run: |
+          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}"
+          test -n "${TF_STATE_BUCKET}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.6
+
+      - name: Init
+        working-directory: envs/dev
+        run: |
+          args=(
+            "-backend-config=bucket=${TF_STATE_BUCKET}"
+            "-backend-config=key=ssvd/dev/terraform.tfstate"
+            "-backend-config=region=${AWS_REGION}"
+            "-backend-config=encrypt=true"
+          )
+          if [ -n "${TF_LOCK_TABLE}" ]; then
+            args+=("-backend-config=dynamodb_table=${TF_LOCK_TABLE}")
+          fi
+          terraform init "${args[@]}"
+
+      - name: Apply
+        working-directory: envs/dev
+        run: terraform apply -auto-approve -input=false
+
+  apply-staging:
+    name: Apply staging
+    needs: detect
+    if: needs.detect.outputs.staging == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-2' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate apply configuration
+        run: |
+          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}"
+          test -n "${TF_STATE_BUCKET}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.6
+
+      - name: Init
+        working-directory: envs/staging
+        run: |
+          args=(
+            "-backend-config=bucket=${TF_STATE_BUCKET}"
+            "-backend-config=key=ssvd/staging/terraform.tfstate"
+            "-backend-config=region=${AWS_REGION}"
+            "-backend-config=encrypt=true"
+          )
+          if [ -n "${TF_LOCK_TABLE}" ]; then
+            args+=("-backend-config=dynamodb_table=${TF_LOCK_TABLE}")
+          fi
+          terraform init "${args[@]}"
+
+      - name: Apply
+        working-directory: envs/staging
+        run: terraform apply -auto-approve -input=false
+
+  apply-prod:
+    name: Apply prod
+    needs: detect
+    if: needs.detect.outputs.prod == 'true'
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-2' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate apply configuration
+        run: |
+          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}"
+          test -n "${TF_STATE_BUCKET}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.6
+
+      - name: Init
+        working-directory: envs/prod
+        run: |
+          args=(
+            "-backend-config=bucket=${TF_STATE_BUCKET}"
+            "-backend-config=key=ssvd/prod/terraform.tfstate"
+            "-backend-config=region=${AWS_REGION}"
+            "-backend-config=encrypt=true"
+          )
+          if [ -n "${TF_LOCK_TABLE}" ]; then
+            args+=("-backend-config=dynamodb_table=${TF_LOCK_TABLE}")
+          fi
+          terraform init "${args[@]}"
+
+      - name: Apply
+        working-directory: envs/prod
+        run: terraform apply -auto-approve -input=false

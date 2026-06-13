@@ -83,14 +83,20 @@ Repository variables:
 
 - `AWS_REGION`: for example `ap-south-2`
 - `AWS_ROLE_TO_ASSUME`: IAM role ARN used by plan/apply workflows
+- `TF_STATE_BUCKET`: S3 bucket used for Terraform remote state
+- `TF_LOCK_TABLE`: optional DynamoDB table used for Terraform state locking
 
 Repository secrets:
 
 - `INFRACOST_API_KEY`: enables Infracost PR comments
 - `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: fallback only if OIDC is not configured
 
-The `Terraform Apply Dev` workflow is manual and requires typing `apply-dev`.
-Use GitHub environment protection rules for `dev`, `staging`, and `prod`.
+The `Terraform Apply` workflow runs after changes merge to `main`. It applies
+only environments whose files changed. Changes under `modules/` apply all
+environments because shared modules can affect every cluster.
+
+Use GitHub environment protection rules for `dev`, `staging`, and `prod` if you
+want an additional approval gate after merge and before Terraform apply.
 
 ## CI Controls
 

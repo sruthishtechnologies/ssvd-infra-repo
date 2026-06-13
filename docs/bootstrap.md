@@ -4,7 +4,11 @@
 
 ```bash
 cd envs/dev
-terraform init -backend=false
+terraform init \
+  -backend-config="bucket=<terraform-state-bucket>" \
+  -backend-config="key=ssvd/dev/terraform.tfstate" \
+  -backend-config="region=ap-south-2" \
+  -backend-config="encrypt=true"
 terraform apply
 ```
 
