@@ -63,7 +63,7 @@ jobs:
         if: steps.auth.outputs.configured == 'true'
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.9.8
+          terraform_version: 1.15.6
 
       - name: Init without backend
         if: steps.auth.outputs.configured == 'true'

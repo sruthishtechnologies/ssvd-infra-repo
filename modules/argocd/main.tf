@@ -1,4 +1,4 @@
-resource "kubernetes_namespace" "argocd" {
+resource "kubernetes_namespace_v1" "argocd" {
   metadata {
     name = var.namespace
 
@@ -13,7 +13,7 @@ resource "helm_release" "argocd" {
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argo-cd"
   version    = var.chart_version
-  namespace  = kubernetes_namespace.argocd.metadata[0].name
+  namespace  = kubernetes_namespace_v1.argocd.metadata[0].name
 
   atomic          = true
   cleanup_on_fail = true
@@ -51,7 +51,7 @@ resource "helm_release" "argocd" {
 resource "helm_release" "root_app" {
   name      = var.root_app_name
   chart     = "${path.module}/root-app"
-  namespace = kubernetes_namespace.argocd.metadata[0].name
+  namespace = kubernetes_namespace_v1.argocd.metadata[0].name
 
   atomic          = true
   cleanup_on_fail = true
